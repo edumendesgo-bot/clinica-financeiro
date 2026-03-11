@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vivaci Estética Avançada | Sistema Financeiro</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Inter', sans-serif; }
+    html { scroll-behavior: smooth; }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    .sidebar-link {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 10px;
+      color: rgba(255,255,255,0.6); font-size: 14px; font-weight: 500;
+      cursor: pointer; transition: all 0.2s; user-select: none;
+    }
+    .sidebar-link:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.9); }
+    .sidebar-link.active { background: linear-gradient(135deg, rgba(236,72,153,0.3), rgba(139,92,246,0.3)); color: white; }
+    .sidebar-link .icon { width: 20px; height: 20px; flex-shrink: 0; }
+
+    .kpi-card {
+      background: white; border-radius: 16px; padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      border: 1px solid #f1f5f9;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+
+    .chart-card {
+      background: white; border-radius: 16px; padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      border: 1px solid #f1f5f9;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #ec4899, #8b5cf6);
+      color: white; border: none; padding: 10px 20px; border-radius: 10px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    .btn-secondary {
+      background: #f8fafc; color: #374151; border: 1px solid #e5e7eb;
+      padding: 10px 20px; border-radius: 10px; font-size: 14px;
+      font-weight: 500; cursor: pointer; transition: all 0.2s;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .btn-secondary:hover { background: #f1f5f9; }
+
+    .btn-danger {
+      background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;
+      padding: 6px 12px; border-radius: 8px; font-size: 13px;
+      font-weight: 500; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-danger:hover { background: #fee2e2; }
+
+    .btn-edit {
+      background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
+      padding: 6px 12px; border-radius: 8px; font-size: 13px;
+      font-weight: 500; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-edit:hover { background: #dbeafe; }
+
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table thead th {
+      background: #f8fafc; color: #6b7280; font-size: 12px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 12px 16px; text-align: left; border-bottom: 1px solid #e5e7eb;
+    }
+    .data-table tbody tr { border-bottom: 1px solid #f3f4f6; transition: background 0.15s; }
+    .data-table tbody tr:hover { background: #fafafa; }
+    .data-table tbody td { padding: 14px 16px; font-size: 14px; color: #374151; }
+    .data-table tbody tr:last-child { border-bottom: none; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    .form-control {
+      width: 100%; padding: 10px 14px; border: 1px solid #e5e7eb;
+      border-radius: 10px; font-size: 14px; color: #111827;
+      transition: border-color 0.2s, box-shadow 0.2s; outline: none;
+      background: white;
+    }
+    .form-control:focus { border-color: #ec4899; box-shadow: 0 0 0 3px rgba(236,72,153,0.1); }
+
+    .badge {
+      display: inline-flex; align-items: center; padding: 3px 10px;
+      border-radius: 999px; font-size: 12px; font-weight: 600;
+    }
+    .badge-green { background: #d1fae5; color: #065f46; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
+    .badge-yellow { background: #fef3c7; color: #92400e; }
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-purple { background: #ede9fe; color: #5b21b6; }
+    .badge-gray { background: #f3f4f6; color: #374151; }
+    .badge-pink { background: #fce7f3; color: #9d174d; }
+
+    .modal-header {
+      padding: 24px 24px 0;
+      border-bottom: 1px solid #f3f4f6; padding-bottom: 16px; margin-bottom: 24px;
+    }
+    .modal-title { font-size: 18px; font-weight: 700; color: #111827; }
+    .modal-subtitle { font-size: 13px; color: #6b7280; margin-top: 2px; }
+    .modal-body { padding: 0 24px; }
+    .modal-footer { padding: 20px 24px; border-top: 1px solid #f3f4f6; margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px; }
+
+    .filter-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
+    .filter-input { padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; outline: none; }
+    .filter-input:focus { border-color: #ec4899; }
+
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+    .page-title { font-size: 22px; font-weight: 700; color: #111827; }
+    .page-subtitle { font-size: 14px; color: #6b7280; margin-top: 2px; }
+
+    .summary-bar {
+      background: linear-gradient(135deg, #1e1b4b, #312e81);
+      border-radius: 14px; padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+    }
+    .summary-bar .item { text-align: center; }
+    .summary-bar .label { font-size: 11px; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.05em; }
+    .summary-bar .value { font-size: 18px; font-weight: 700; color: white; margin-top: 2px; }
+
+    .empty-state { text-align: center; padding: 60px 20px; color: #9ca3af; }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state p { font-size: 14px; }
+
+    .trend-up { color: #10b981; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+    .trend-down { color: #ef4444; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+
+    .tab-container { display: flex; gap: 4px; background: #f3f4f6; border-radius: 10px; padding: 4px; margin-bottom: 20px; }
+    .tab-btn { flex: 1; padding: 8px 16px; border-radius: 8px; border: none; background: transparent; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; color: #6b7280; }
+    .tab-btn.active { background: white; color: #111827; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+    .toast-success { background: #065f46; color: white; }
+    .toast-error { background: #991b1b; color: white; }
+
+    @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .animate-slide-in { animation: slideIn 0.3s ease; }
+    .animate-fade-in { animation: fadeIn 0.2s ease; }
+
+    .progress-bar-bg { background: #e5e7eb; border-radius: 999px; height: 6px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #ec4899, #8b5cf6); }
+
+    .section-divider { height: 1px; background: #f1f5f9; margin: 16px 0; }
+
+    select.form-control { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
+
+    @keyframes shake {
+      0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-8px)} 40%,80%{transform:translateX(8px)}
+    }
+    @keyframes loginFadeUp {
+      from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)}
+    }
+    .login-card-anim { animation: loginFadeUp 0.5s ease forwards; }
+  </style>
+</head>
+<body class="bg-slate-50">
+
+<!-- ========================================================
+     TELA DE LOGIN
+     ======================================================== -->
+<div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center overflow-auto"
+  style="background: linear-gradient(135deg, #0f0d2e 0%, #1e1b4b 50%, #2d1b69 100%)">
+
+  <!-- Partículas decorativas -->
+  <div class="absolute inset-0 overflow-hidden pointer-events-none">
+    <div class="absolute rounded-full opacity-10" style="width:400px;height:400px;background:radial-gradient(circle,#ec4899,transparent);top:-100px;right:-100px"></div>
+    <div class="absolute rounded-full opacity-10" style="width:300px;height:300px;background:radial-gradient(circle,#8b5cf6,transparent);bottom:-80px;left:-80px"></div>
+  </div>
+
+  <div id="login-card" class="relative w-full max-w-md mx-4 login-card-anim">
+    <!-- Card -->
+    <div class="bg-white rounded-3xl shadow-2xl overflow-hidden">
+
+      <!-- Header do card -->
+      <div class="px-8 pt-8 pb-6 text-center" style="background:linear-gradient(135deg,#1e1b4b,#312e81)">
+        <div class="w-16 h-16 rounded-2xl flex items-center justify-center font-black text-white text-2xl mx-auto mb-4 shadow-lg"
+          style="background:linear-gradient(135deg,#ec4899,#8b5cf6)">V</div>
+        <h1 class="text-white font-bold text-xl">Vivaci Estética Avançada</h1>
+        <p class="text-xs mt-1" style="color:rgba(255,255,255,0.5)">Sistema Financeiro · Acesso Restrito</p>
+      </div>
+
+      <!-- Formulário -->
+      <div class="px-8 py-7">
+        <div class="form-group">
+          <label class="form-label">Login</label>
+          <div class="relative">
+            <input type="text" id="auth-login" class="form-control" placeholder="Seu usuário de acesso"
+              style="padding-left:42px" autocomplete="username">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Senha</label>
+          <div class="relative">
+            <input type="password" id="auth-senha" class="form-control" placeholder="••••••••"
+              style="padding-left:42px" autocomplete="current-password">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </div>
+        </div>
+
+        <!-- Erro -->
+        <div id="auth-erro" class="hidden text-sm font-semibold text-red-600 text-center py-2 px-3 rounded-xl mb-4" style="background:#fef2f2;border:1px solid #fecaca"></div>
+
+        <button id="auth-btn" onclick="tentarLogin()"
+          class="w-full py-3 rounded-xl font-bold text-white text-sm flex items-center justify-center gap-2 transition-all"
+          style="background:linear-gradient(135deg,#ec4899,#8b5cf6)">
+          Entrar
+        </button>
+
+        <p class="text-center text-xs text-gray-400 mt-5">
+          Acesso exclusivo para equipe autorizada.<br>
+          Em caso de problemas, contate a administração.
+        </p>
+      </div>
+    </div>
+
+    <!-- Credencial de primeiro acesso (remova após configurar) -->
+    <div class="mt-4 p-3 rounded-2xl" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1)">
+      <p class="text-xs text-center mb-2" style="color:rgba(255,255,255,0.35)">Credenciais de primeiro acesso</p>
+      <div class="flex flex-col gap-1">
+        <p class="text-xs" style="color:rgba(255,255,255,0.4)">
+          👩‍⚕️ Dra. Natália — login <strong style="color:rgba(255,255,255,0.7)">natalia</strong> · senha <strong style="color:rgba(255,255,255,0.7)">Vivaci@2026</strong>
+        </p>
+        <p class="text-xs" style="color:rgba(255,255,255,0.4)">
+          💼 Eduardo — login <strong style="color:rgba(255,255,255,0.7)">eduardo</strong> · senha <strong style="color:rgba(255,255,255,0.7)">Vivaci@2026</strong>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="flex h-screen hidden">
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar" class="w-64 flex-shrink-0 flex flex-col fixed h-full z-20 overflow-hidden" style="background: linear-gradient(180deg, #1e1b4b 0%, #0f0d2e 100%);">
+    <!-- Logo -->
+    <div class="p-5 border-b" style="border-color: rgba(255,255,255,0.08)">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-lg flex-shrink-0" style="background: linear-gradient(135deg, #ec4899, #8b5cf6)">V</div>
+        <div class="min-w-0">
+          <p class="font-semibold text-white text-sm leading-tight">Vivaci Estética Avançada</p>
+          <p class="text-xs" style="color: rgba(255,255,255,0.4)">Sistema Financeiro</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="flex-1 p-3 overflow-y-auto">
+      <p class="text-xs font-semibold uppercase tracking-widest mb-2 px-2" style="color: rgba(255,255,255,0.25)">Principal</p>
+      <ul id="nav-menu" class="space-y-0.5 mb-4"></ul>
+      <div class="section-divider" style="background: rgba(255,255,255,0.06)"></div>
+      <p class="text-xs font-semibold uppercase tracking-widest mb-2 px-2 mt-3" style="color: rgba(255,255,255,0.25)">Cadastros</p>
+      <ul id="nav-menu-2" class="space-y-0.5"></ul>
+    </nav>
+
+    <div class="p-4" style="border-top: 1px solid rgba(255,255,255,0.06)">
+      <p class="text-xs text-center" style="color: rgba(255,255,255,0.2)">Sistema Financeiro v1.0 · 2026</p>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="flex-1 flex flex-col" style="margin-left: 256px; min-height: 100vh;">
+    <!-- Top bar -->
+    <header class="bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+      <div>
+        <div id="page-title-bar" class="text-lg font-bold text-gray-800"></div>
+        <div id="page-subtitle-bar" class="text-xs text-gray-400 mt-0.5"></div>
+      </div>
+      <div class="flex items-center gap-3">
+        <!-- Botão WhatsApp -->
+        <button onclick="abrirConfigWhatsApp()" title="Enviar alerta via WhatsApp"
+          class="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
+          style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.558 4.118 1.535 5.846L0 24l6.335-1.509A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.808 9.808 0 01-5.031-1.388l-.361-.214-3.741.981.999-3.648-.235-.374A9.77 9.77 0 012.182 12C2.182 6.58 6.58 2.182 12 2.182S21.818 6.58 21.818 12 17.42 21.818 12 21.818z"/></svg>
+          WhatsApp
+        </button>
+        <!-- Sino de notificações -->
+        <div class="relative">
+          <button id="notif-bell" onclick="toggleNotifPanel()" title="Notificações"
+            class="relative w-9 h-9 flex items-center justify-center rounded-xl transition-all"
+            style="background:#f8fafc;border:1px solid #e5e7eb">
+            <svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+            </svg>
+            <span id="notif-badge" class="hidden absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-white font-bold"
+              style="font-size:10px;background:#ef4444;line-height:1">0</span>
+          </button>
+        </div>
+        <div class="text-right">
+          <p class="text-sm font-medium text-gray-700" id="header-user-name">—</p>
+          <p class="text-xs text-gray-400" id="current-date-display"></p>
+        </div>
+        <!-- Avatar + menu do usuário -->
+        <div class="relative">
+          <button id="user-menu-btn" onclick="toggleUserMenu()"
+            class="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 transition-all hover:opacity-90"
+            style="background: linear-gradient(135deg, #ec4899, #8b5cf6)"
+            id="header-user-avatar">V</button>
+          <!-- Dropdown -->
+          <div id="user-menu" class="hidden absolute right-0 top-11 w-52 bg-white rounded-2xl shadow-xl z-50 overflow-hidden"
+            style="border:1px solid #e5e7eb">
+            <div class="px-4 py-3" style="background:linear-gradient(135deg,#1e1b4b,#312e81)">
+              <p class="text-white font-semibold text-sm" id="user-menu-name">—</p>
+              <p class="text-xs" style="color:rgba(255,255,255,0.5)">Administrador</p>
+            </div>
+            <div class="p-1.5">
+              <button onclick="toggleUserMenu();abrirAlterarSenha()"
+                class="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-gray-700 font-medium hover:bg-gray-50 transition-all text-left">
+                <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                Alterar Senha
+              </button>
+              <div style="height:1px;background:#f3f4f6;margin:4px 0"></div>
+              <button onclick="authLogout()"
+                class="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left"
+                style="color:#dc2626">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Sair do Sistema
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Painel de Notificações (dropdown) -->
+    <div id="notif-panel" class="hidden fixed z-40 w-96 bg-white rounded-2xl shadow-2xl overflow-hidden"
+      style="top:64px;right:16px;border:1px solid #e5e7eb;max-height:80vh;overflow-y:auto">
+      <!-- preenchido via JS -->
+    </div>
+
+    <!-- Page content -->
+    <main class="flex-1 p-6 overflow-y-auto" id="page-content">
+      <div class="flex items-center justify-center h-full">
+        <div class="text-center">
+          <div class="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center" style="background: linear-gradient(135deg, #ec4899, #8b5cf6)">
+            <svg class="w-6 h-6 text-white animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+          </div>
+          <p class="text-gray-500 text-sm">Carregando sistema...</p>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="modal-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background: rgba(0,0,0,0.5)">
+  <div id="modal-box" class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-screen overflow-y-auto animate-slide-in">
+    <!-- content injected by JS -->
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="hidden fixed bottom-6 right-6 z-50 rounded-xl px-5 py-3 text-sm font-semibold shadow-lg animate-slide-in" style="min-width: 200px"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+<script src="js/relatorios.js"></script>
+<script src="js/notificacoes.js"></script>
+</body>
+</html>
