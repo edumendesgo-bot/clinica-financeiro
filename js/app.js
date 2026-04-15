@@ -5,7 +5,7 @@
 // ============================================================
 const TIPOS_PROFISSIONAL = ['SDR', 'CLOSER', 'ATENDENTE', 'ADMIN'];
 const FORMAS_PAGAMENTO = ['PIX', 'Dinheiro', 'Cartão Crédito', 'Cartão Débito', 'Boleto', 'Cheque'];
-const CATEGORIAS_SERVICO = ['Toxina Botulínica', 'Preenchimentos', 'Bioestimuladores', 'Harmonização', 'Skincare', 'Tratamento de Pele', 'Tratamento Face', 'Tratamento Pescoço', 'Corporal'];
+const CATEGORIAS_SERVICO = ['Toxina Botulínica', 'Preenchimentos', 'Bioestimuladores', 'Harmonização', 'Skincare', 'Tratamento de Pele', 'Tratamento Face', 'Tratamento Pescoço', 'Corporal', 'Consulta Personalizada'];
 const CATEGORIAS_DESPESA = ['Aluguel', 'Operacional Clínica', 'Pessoal', 'Marketing', 'Materiais', 'Impostos', 'Software', 'Locação de Aparelhos', 'Outros'];
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
@@ -181,7 +181,12 @@ function loadState() {
       state.profissionais = data.profissionais || MOCK_PROFISSIONAIS;
       state.servicos = data.servicos || MOCK_SERVICOS;
       state.vendas = data.vendas || MOCK_VENDAS;
-      state.despesasFixas = data.despesasFixas || MOCK_DESPESAS_FIXAS;
+      state.despesasFixas = (data.despesasFixas || MOCK_DESPESAS_FIXAS).map(d => {
+        if (!d.pagamentos) return d;
+        const pgtos = {};
+        Object.entries(d.pagamentos).forEach(([k, v]) => { if (k >= '2026-01') pgtos[k] = v; });
+        return { ...d, pagamentos: pgtos };
+      });
       state.despesasVariaveis = (data.despesasVariaveis || MOCK_DESPESAS_VARIAVEIS)
         .filter(d => { const ano = parseInt((d.data||'').split('-')[0]); return ano >= 2026; });
       state.receitasExtras = data.receitasExtras || MOCK_RECEITAS_EXTRAS;
@@ -263,14 +268,16 @@ function getReceitasMes(mes, ano) {
   const extras = somaArray(state.receitasExtras.filter(r=>isMesAno(r.data,mes,ano)), r=>r.valor);
   return vendas + extras;
 }
-function getDespesasFixasMes() {
-  return somaArray(state.despesasFixas.filter(d=>d.status==='ATIVA'), d=>d.valor);
+function getDespesasFixasMes(mes, ano) {
+  const m = mes ?? state.selectedMonth;
+  const a = ano ?? state.selectedYear;
+  return somaArray(state.despesasFixas.filter(d=>_despesaAtivaNoMes(d,m,a)), d=>d.valor);
 }
 function getDespesasVariaveisMes(mes, ano) {
   return somaArray(state.despesasVariaveis.filter(d=>isMesAno(d.data,mes,ano)), d=>d.valor);
 }
 function getDespesasTotalMes(mes, ano) {
-  return getDespesasFixasMes() + getDespesasVariaveisMes(mes, ano);
+  return getDespesasFixasMes(mes, ano) + getDespesasVariaveisMes(mes, ano);
 }
 function getLucroMes(mes, ano) {
   return getReceitasMes(mes,ano) - getDespesasTotalMes(mes,ano);
@@ -481,7 +488,7 @@ function renderDashboard() {
   const nVendas = vendas.length;
   const ticketMedio = nVendas > 0 ? somaArray(vendas, v=>v.valor)/nVendas : 0;
 
-  const meses6 = lastNMonths(6);
+  const meses6 = lastNMonths(6).filter(x => x.ano >= 2026);
   const comissoes = getComissoesPorProfissional(mes, ano);
   const totalComissoes = somaArray(comissoes, c=>c.comissao);
 
@@ -700,7 +707,12 @@ function renderVendas() {
       <option value="PENDENTE">Pendente</option>
       <option value="CANCELADO">Cancelado</option>
     </select>
-    <input type="text" id="fv-busca" class="filter-input" placeholder="Buscar cliente..." oninput="filterVendas()" style="flex:1; min-width:150px">
+    <input type="text" id="fv-busca" class="filter-input" placeholder="Buscar cliente, profissional, CPF ou telefone..."
+      oninput="filterVendas()"
+      onkeydown="if(event.key==='Enter')filterVendas()"
+      style="flex:1; min-width:150px">
+    <button onclick="filterVendas()" class="btn-edit" style="white-space:nowrap">🔍 Buscar</button>
+    <button onclick="limparBuscaVendas()" class="btn-secondary" style="white-space:nowrap;padding:8px 12px;font-size:13px">✕ Limpar</button>
   </div>
 
   <div id="vendas-summary" class="summary-bar"></div>
@@ -720,70 +732,114 @@ function renderVendas() {
   filterVendas();
 }
 
+function limparBuscaVendas() {
+  const el = document.getElementById('fv-busca');
+  if (el) el.value = '';
+  filterVendas();
+}
+
+function _renderVendaRow(v) {
+  const atendente = getProfissional(v.atendenteId || v.profissionalId);
+  const closer    = v.closerId ? getProfissional(v.closerId) : null;
+  const sdr       = v.sdrId   ? getProfissional(v.sdrId)    : null;
+  const serv      = getServico(v.servicoId);
+  const nomeServico = v.itens && v.itens.length > 0
+    ? getServico(v.itens[0].servicoId).nome + (v.itens.length > 1 ? ` +${v.itens.length - 1}` : '')
+    : serv.nome;
+  const equipe = `
+    <div class="flex flex-col gap-0.5">
+      <div class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:#8b5cf6"></span><span class="text-xs text-gray-700 font-medium">${(atendente.nome||'').split(' ')[0]}</span><span class="text-xs text-gray-400">Atend.</span></div>
+      ${closer ? `<div class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:#ec4899"></span><span class="text-xs text-gray-700 font-medium">${(closer.nome||'').split(' ')[0]}</span><span class="text-xs text-gray-400">Closer</span></div>` : ''}
+      ${sdr    ? `<div class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:#3b82f6"></span><span class="text-xs text-gray-700 font-medium">${(sdr.nome||'').split(' ')[0]}</span><span class="text-xs text-gray-400">SDR</span></div>` : ''}
+    </div>`;
+  return `<tr class="cursor-pointer hover:bg-indigo-50 transition-colors" onclick="showEspelhoVenda('${v.id}')">
+    <td class="whitespace-nowrap">${fmtDate(v.data)}</td>
+    <td>
+      <div class="font-medium text-gray-800">${v.cliente||''}</div>
+      ${v.cpf ? `<div class="text-xs text-gray-400 mt-0.5">CPF: ${v.cpf}</div>` : ''}
+      ${v.telefone ? `<div class="text-xs text-gray-400">📱 ${v.telefone}</div>` : ''}
+    </td>
+    <td><div class="font-medium text-gray-800 text-sm">${nomeServico}</div></td>
+    <td>${equipe}</td>
+    <td class="font-bold text-gray-800">${R$(v.valor)}</td>
+    <td><span class="badge badge-blue">${v.formaPagamento||''}</span></td>
+    <td>${badgeStatus(v.status)}</td>
+    <td class="whitespace-nowrap" onclick="event.stopPropagation()">
+      <button class="btn-edit" onclick="showVendaModal('${v.id}')">Editar</button>
+      <button class="btn-danger ml-1" onclick="deleteVenda('${v.id}')">Excluir</button>
+    </td>
+  </tr>`;
+}
+
 function filterVendas() {
-  const mes    = parseInt(document.getElementById('fv-mes')?.value || state.selectedMonth);
-  const ano    = parseInt(document.getElementById('fv-ano')?.value || state.selectedYear);
-  const profId = document.getElementById('fv-prof')?.value;
-  const status = document.getElementById('fv-status')?.value;
-  const busca  = (document.getElementById('fv-busca')?.value||'').toLowerCase();
+  try {
+    const mes    = parseInt(document.getElementById('fv-mes')?.value || state.selectedMonth);
+    const ano    = parseInt(document.getElementById('fv-ano')?.value || state.selectedYear);
+    const profId = document.getElementById('fv-prof')?.value || '';
+    const status = document.getElementById('fv-status')?.value || '';
+    const busca  = (document.getElementById('fv-busca')?.value || '').toLowerCase().trim();
 
-  let vendas = [...state.vendas].sort((a,b)=>b.data.localeCompare(a.data));
-  vendas = vendas.filter(v => isMesAno(v.data, mes, ano));
-  if (profId) vendas = vendas.filter(v=>v.profissionalId===profId);
-  if (status) vendas = vendas.filter(v=>v.status===status);
-  if (busca) vendas = vendas.filter(v=>
-    v.cliente.toLowerCase().includes(busca) ||
-    (v.cpf||'').replace(/\D/g,'').includes(busca.replace(/\D/g,'')) ||
-    (v.telefone||'').replace(/\D/g,'').includes(busca.replace(/\D/g,''))
-  );
+    let vendas = (state.vendas || []).filter(v => v && v.data).slice().sort((a,b) => b.data > a.data ? 1 : -1);
 
-  const total = somaArray(vendas.filter(v=>v.status!=='CANCELADO'), v=>v.valor);
-  const concl = vendas.filter(v=>v.status==='CONCLUIDO').length;
-  const pend = vendas.filter(v=>v.status==='PENDENTE').length;
+    if (!busca) {
+      vendas = vendas.filter(v => isMesAno(v.data, mes, ano));
+    }
+    if (profId) {
+      vendas = vendas.filter(v =>
+        (v.atendenteId || v.profissionalId) === profId ||
+        v.closerId === profId ||
+        v.sdrId    === profId
+      );
+    }
+    if (status) {
+      vendas = vendas.filter(v => v.status === status);
+    }
+    if (busca) {
+      const norm = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      const buscaNorm = norm(busca);
+      const term = busca.replace(/\D/g, '');
+      vendas = vendas.filter(v => {
+        const nome      = norm(v.cliente);
+        const cpf       = (v.cpf || '').replace(/\D/g, '');
+        const tel       = (v.telefone || '').replace(/\D/g, '');
+        const atendente = norm(getProfissional(v.atendenteId || v.profissionalId).nome);
+        const closer    = v.closerId ? norm(getProfissional(v.closerId).nome) : '';
+        const sdr       = v.sdrId    ? norm(getProfissional(v.sdrId).nome)    : '';
+        const obs       = norm(v.observacao);
+        return nome.includes(buscaNorm) ||
+               atendente.includes(buscaNorm) ||
+               closer.includes(buscaNorm) ||
+               sdr.includes(buscaNorm) ||
+               obs.includes(buscaNorm) ||
+               (term && (cpf.includes(term) || tel.includes(term)));
+      });
+    }
 
-  const sum = document.getElementById('vendas-summary');
-  if (sum) sum.innerHTML = `
-    <div class="item"><div class="label">Total Vendas</div><div class="value">${vendas.length}</div></div>
-    <div class="item"><div class="label">Concluídas</div><div class="value">${concl}</div></div>
-    <div class="item"><div class="label">Pendentes</div><div class="value">${pend}</div></div>
-    <div class="item"><div class="label">Faturamento</div><div class="value">${R$(total)}</div></div>
-  `;
+    const total = somaArray(vendas.filter(v => v.status !== 'CANCELADO'), v => v.valor);
+    const concl = vendas.filter(v => v.status === 'CONCLUIDO').length;
+    const pend  = vendas.filter(v => v.status === 'PENDENTE').length;
 
-  const tb = document.getElementById('vendas-tbody');
-  if (!tb) return;
-  if (vendas.length === 0) {
-    tb.innerHTML = `<tr><td colspan="8" class="text-center py-12 text-gray-400">Nenhuma venda encontrada</td></tr>`;
-    return;
+    const sum = document.getElementById('vendas-summary');
+    if (sum) sum.innerHTML = `
+      <div class="item"><div class="label">Total Vendas</div><div class="value">${vendas.length}</div></div>
+      <div class="item"><div class="label">Concluídas</div><div class="value">${concl}</div></div>
+      <div class="item"><div class="label">Pendentes</div><div class="value">${pend}</div></div>
+      <div class="item"><div class="label">Faturamento</div><div class="value">${R$(total)}</div></div>
+    `;
+
+    const tb = document.getElementById('vendas-tbody');
+    if (!tb) return;
+    if (vendas.length === 0) {
+      tb.innerHTML = `<tr><td colspan="8" class="text-center py-12 text-gray-400">Nenhuma venda encontrada${busca ? ' para "' + busca + '"' : ''}</td></tr>`;
+      return;
+    }
+    const rows = vendas.map(v => { try { return _renderVendaRow(v); } catch(e) { console.error('Erro linha venda', v.id, e); return ''; } });
+    tb.innerHTML = rows.join('');
+  } catch(e) {
+    console.error('Erro filterVendas:', e);
+    const tb = document.getElementById('vendas-tbody');
+    if (tb) tb.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-red-500">Erro ao filtrar: ${e.message}</td></tr>`;
   }
-  tb.innerHTML = vendas.map(v => {
-    const atendente = getProfissional(v.atendenteId || v.profissionalId);
-    const closer    = v.closerId ? getProfissional(v.closerId) : null;
-    const sdr       = v.sdrId   ? getProfissional(v.sdrId)    : null;
-    const serv = getServico(v.servicoId);
-    const equipe = `
-      <div class="flex flex-col gap-0.5">
-        <div class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:#8b5cf6"></span><span class="text-xs text-gray-700 font-medium">${atendente.nome.split(' ')[0]}</span><span class="text-xs text-gray-400">Atend.</span></div>
-        ${closer ? `<div class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:#ec4899"></span><span class="text-xs text-gray-700 font-medium">${closer.nome.split(' ')[0]}</span><span class="text-xs text-gray-400">Closer</span></div>` : ''}
-        ${sdr    ? `<div class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full flex-shrink-0" style="background:#3b82f6"></span><span class="text-xs text-gray-700 font-medium">${sdr.nome.split(' ')[0]}</span><span class="text-xs text-gray-400">SDR</span></div>` : ''}
-      </div>`;
-    return `<tr>
-      <td class="whitespace-nowrap">${fmtDate(v.data)}</td>
-      <td>
-        <div class="font-medium text-gray-800">${v.cliente}</div>
-        ${v.cpf ? `<div class="text-xs text-gray-400 mt-0.5">CPF: ${v.cpf}</div>` : ''}
-        ${v.telefone ? `<div class="text-xs text-gray-400">📱 ${v.telefone}</div>` : ''}
-      </td>
-      <td>${serv.nome}</td>
-      <td>${equipe}</td>
-      <td class="font-bold text-gray-800">${R$(v.valor)}</td>
-      <td><span class="badge badge-blue">${v.formaPagamento}</span></td>
-      <td>${badgeStatus(v.status)}</td>
-      <td class="whitespace-nowrap">
-        <button class="btn-edit" onclick="showVendaModal('${v.id}')">Editar</button>
-        <button class="btn-danger ml-1" onclick="deleteVenda('${v.id}')">Excluir</button>
-      </td>
-    </tr>`;
-  }).join('');
 }
 
 function showVendaModal(id) {
@@ -822,11 +878,43 @@ function showVendaModal(id) {
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Serviço *</label>
-        <select id="mv-servico" class="form-control" onchange="preencheValorServico()">
-          <option value="">Selecione um serviço</option>
-          ${state.servicos.map(s=>`<option value="${s.id}" data-preco="${s.preco}"${v?.servicoId===s.id?' selected':''}>${s.nome} – ${R$(s.preco)}</option>`).join('')}
-        </select>
+        <div class="flex items-center justify-between mb-2">
+          <label class="form-label mb-0">Serviços *</label>
+          <button type="button" onclick="addServicoItem()" class="btn-edit" style="padding:4px 10px;font-size:12px">+ Adicionar serviço</button>
+        </div>
+        <div id="mv-itens-container" class="space-y-2"></div>
+        <div class="mt-3 pt-3 border-t border-gray-100 space-y-2">
+          <div class="flex items-center justify-between px-1">
+            <span class="text-sm text-gray-400">Subtotal</span>
+            <span id="mv-subtotal-display" class="text-sm text-gray-500">R$ 0,00</span>
+          </div>
+          <div class="flex items-center gap-3 px-1">
+            <span class="text-sm text-gray-500 whitespace-nowrap">Desconto</span>
+            <div class="flex gap-1 flex-1 justify-end">
+              <select id="mv-desconto-tipo" class="form-control" style="width:70px;padding:4px 6px;font-size:13px" onchange="atualizarTotalVenda()">
+                <option value="R$" ${v?.desconto?.tipo==='%'?'':'selected'}>R$</option>
+                <option value="%" ${v?.desconto?.tipo==='%'?'selected':''}>%</option>
+              </select>
+              <input type="number" id="mv-desconto-valor" class="form-control" min="0" step="0.01" placeholder="0" value="${v?.desconto?.valor||''}"
+                oninput="atualizarTotalVenda()" style="width:90px;padding:4px 8px;font-size:13px">
+            </div>
+          </div>
+          <div class="flex items-center gap-3 px-1">
+            <span class="text-sm text-gray-500 whitespace-nowrap">Tarifa de cartão</span>
+            <div class="flex gap-1 flex-1 justify-end">
+              <select id="mv-tarifa-tipo" class="form-control" style="width:70px;padding:4px 6px;font-size:13px" onchange="atualizarTotalVenda()">
+                <option value="R$" ${v?.tarifaCartao?.tipo==='%'?'':'selected'}>R$</option>
+                <option value="%" ${v?.tarifaCartao?.tipo==='%'?'selected':''}>%</option>
+              </select>
+              <input type="number" id="mv-tarifa-valor" class="form-control" min="0" step="0.01" placeholder="0" value="${v?.tarifaCartao?.valor||''}"
+                oninput="atualizarTotalVenda()" style="width:90px;padding:4px 8px;font-size:13px">
+            </div>
+          </div>
+          <div class="flex items-center justify-between px-1 pt-1 border-t border-gray-100">
+            <span class="text-sm font-bold text-gray-700">Total a cobrar</span>
+            <span id="mv-total-display" class="text-lg font-bold text-gray-800">R$ 0,00</span>
+          </div>
+        </div>
       </div>
       <div class="p-3 rounded-xl mb-2" style="background:#f8fafc;border:1px solid #e5e7eb">
         <p class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Equipe — Comissões</p>
@@ -858,22 +946,16 @@ function showVendaModal(id) {
             </label>
             <select id="mv-srr" class="form-control">
               <option value="">Nenhum</option>
-              ${state.profissionais.filter(p=>p.ativo&&p.tipo==='SDR').map(p=>`<option value="${p.id}"${v?.srrId===p.id?' selected':''}>${p.nome} — ${p.comissaoPct}% comissão</option>`).join('')}
+              ${state.profissionais.filter(p=>p.ativo&&p.tipo==='SDR').map(p=>`<option value="${p.id}"${v?.sdrId===p.id?' selected':''}>${p.nome} — ${p.comissaoPct}% comissão</option>`).join('')}
             </select>
           </div>
         </div>
       </div>
-      <div class="grid grid-cols-2 gap-4">
-        <div class="form-group">
-          <label class="form-label">Valor (R$) *</label>
-          <input type="number" id="mv-valor" class="form-control" step="0.01" min="0" placeholder="0,00" value="${v?.valor||''}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Status</label>
-          <select id="mv-status" class="form-control">
-            ${['CONCLUIDO','PENDENTE','CANCELADO'].map(s=>`<option value="${s}"${v?.status===s?' selected':''}>${s==='CONCLUIDO'?'Concluído':s==='PENDENTE'?'Pendente':'Cancelado'}</option>`).join('')}
-          </select>
-        </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select id="mv-status" class="form-control">
+          ${['CONCLUIDO','PENDENTE','CANCELADO'].map(s=>`<option value="${s}"${v?.status===s?' selected':''}>${s==='CONCLUIDO'?'Concluído':s==='PENDENTE'?'Pendente':'Cancelado'}</option>`).join('')}
+        </select>
       </div>
       <div class="form-group">
         <label class="form-label">Observação</label>
@@ -885,13 +967,97 @@ function showVendaModal(id) {
       <button class="btn-primary" onclick="saveVenda('${id||''}')">Salvar Venda</button>
     </div>
   `);
+  _initItensModal(v);
 }
 
-function preencheValorServico() {
-  const sel = document.getElementById('mv-servico');
+function _servicoOptsHTML(selectedId) {
+  return `<option value="">Selecione...</option>` +
+    [...state.servicos].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))
+      .map(s=>`<option value="${s.id}" data-preco="${s.preco}"${s.id===selectedId?' selected':''}>${s.nome} – ${R$(s.preco)}</option>`).join('');
+}
+
+function addServicoItem(servicoId='', valor='', qtd=1) {
+  const container = document.getElementById('mv-itens-container');
+  if (!container) return;
+  const div = document.createElement('div');
+  div.className = 'flex gap-2 items-center mv-item-row';
+  div.innerHTML = `
+    <select class="form-control mv-servico-sel flex-1" onchange="itemServicoChanged(this)" style="min-width:0">
+      ${_servicoOptsHTML(servicoId)}
+    </select>
+    <input type="number" class="form-control mv-qtd-item" min="1" step="1" placeholder="Qtd"
+      value="${qtd||1}" oninput="itemQtdChanged(this)" style="width:60px;flex-shrink:0;text-align:center">
+    <input type="number" class="form-control mv-preco-unit" step="0.01" min="0" placeholder="Unitário"
+      value="${valor}" oninput="_recalcItemRow(this.closest('.mv-item-row'));atualizarTotalVenda()" style="width:100px;flex-shrink:0">
+    <input type="number" class="form-control mv-valor-item" step="0.01" min="0" placeholder="Total"
+      value="${(parseFloat(valor)||0)*(qtd||1)||''}" readonly
+      style="width:100px;flex-shrink:0;background:#f1f5f9;color:#374151;cursor:default">
+    <button type="button" onclick="removeServicoItem(this)" style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;padding:6px 10px;border-radius:8px;cursor:pointer;font-size:15px;flex-shrink:0;line-height:1">✕</button>`;
+  container.appendChild(div);
+  atualizarTotalVenda();
+}
+
+function itemServicoChanged(sel) {
   const opt = sel.options[sel.selectedIndex];
   const preco = opt?.dataset?.preco;
-  if (preco) document.getElementById('mv-valor').value = preco;
+  const row = sel.closest('.mv-item-row');
+  if (preco && row) {
+    row.querySelector('.mv-preco-unit').value = preco;
+    _recalcItemRow(row);
+  }
+  atualizarTotalVenda();
+}
+
+function itemQtdChanged(input) {
+  _recalcItemRow(input.closest('.mv-item-row'));
+  atualizarTotalVenda();
+}
+
+function _recalcItemRow(row) {
+  if (!row) return;
+  const preco = parseFloat(row.querySelector('.mv-preco-unit').value) || 0;
+  const qtd   = parseInt(row.querySelector('.mv-qtd-item').value) || 1;
+  row.querySelector('.mv-valor-item').value = (preco * qtd).toFixed(2);
+}
+
+function removeServicoItem(btn) {
+  const container = document.getElementById('mv-itens-container');
+  if (container.children.length <= 1) { showToast('A venda precisa ter ao menos 1 serviço','error'); return; }
+  btn.closest('.mv-item-row').remove();
+  atualizarTotalVenda();
+}
+
+function atualizarTotalVenda() {
+  const inputs = document.querySelectorAll('.mv-valor-item');
+  const subtotal = Array.from(inputs).reduce((s,i)=>s+(parseFloat(i.value)||0),0);
+
+  const descontoTipo = document.getElementById('mv-desconto-tipo')?.value || 'R$';
+  const descontoVal  = parseFloat(document.getElementById('mv-desconto-valor')?.value) || 0;
+  const descontoAbs  = descontoTipo === '%' ? subtotal * descontoVal / 100 : descontoVal;
+
+  const tarifaTipo = document.getElementById('mv-tarifa-tipo')?.value || 'R$';
+  const tarifaVal  = parseFloat(document.getElementById('mv-tarifa-valor')?.value) || 0;
+  const tarifaAbs  = tarifaTipo === '%' ? subtotal * tarifaVal / 100 : tarifaVal;
+
+  const total = Math.max(0, subtotal - descontoAbs - tarifaAbs);
+  const fmt = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v);
+  const elSub = document.getElementById('mv-subtotal-display');
+  if (elSub) elSub.textContent = fmt(subtotal);
+  const el = document.getElementById('mv-total-display');
+  if (el) el.textContent = fmt(total);
+}
+
+// Inicializa os itens ao abrir o modal
+function _initItensModal(v) {
+  const itens = v?.itens?.length ? v.itens
+    : v?.servicoId ? [{ servicoId: v.servicoId, valor: v.valor, qtd: 1 }]
+    : [];
+  if (itens.length === 0) { addServicoItem(); return; }
+  itens.forEach(it => {
+    const qtd       = it.qtd || 1;
+    const precoUnit = it.precoUnit || (qtd > 0 ? it.valor / qtd : it.valor);
+    addServicoItem(it.servicoId, precoUnit.toFixed(2), qtd);
+  });
 }
 
 function mascaraCPF(el) {
@@ -908,24 +1074,48 @@ function mascaraTelefone(el) {
 }
 
 function saveVenda(id) {
-  const data   = document.getElementById('mv-data').value;
-  const cliente = document.getElementById('mv-cliente').value.trim();
-  const cpf    = document.getElementById('mv-cpf').value.trim();
-  const telefone = document.getElementById('mv-telefone').value.trim();
-  const servicoId = document.getElementById('mv-servico').value;
-  const atendenteId = document.getElementById('mv-atendente').value;
-  const closerId  = document.getElementById('mv-closer').value || null;
-  const sdrId     = document.getElementById('mv-srr').value || null;
-  const valor  = parseFloat(document.getElementById('mv-valor').value);
+  const data         = document.getElementById('mv-data').value;
+  const cliente      = document.getElementById('mv-cliente').value.trim();
+  const cpf          = document.getElementById('mv-cpf').value.trim();
+  const telefone     = document.getElementById('mv-telefone').value.trim();
+  const atendenteId  = document.getElementById('mv-atendente').value;
+  const closerId     = document.getElementById('mv-closer').value || null;
+  const sdrId        = document.getElementById('mv-srr').value || null;
   const formaPagamento = document.getElementById('mv-pgto').value;
-  const status = document.getElementById('mv-status').value;
-  const observacao = document.getElementById('mv-obs').value.trim();
+  const status       = document.getElementById('mv-status').value;
+  const observacao   = document.getElementById('mv-obs').value.trim();
 
-  if (!data || !cliente || !servicoId || !atendenteId || !valor) {
-    showToast('Preencha todos os campos obrigatórios', 'error'); return;
+  // Lê todos os itens de serviço
+  const rows = document.querySelectorAll('.mv-item-row');
+  const itens = [];
+  rows.forEach(row => {
+    const sid       = row.querySelector('.mv-servico-sel').value;
+    const qtd       = parseInt(row.querySelector('.mv-qtd-item').value) || 1;
+    const precoUnit = parseFloat(row.querySelector('.mv-preco-unit').value) || 0;
+    const val       = parseFloat(row.querySelector('.mv-valor-item').value) || (precoUnit * qtd);
+    if (sid) itens.push({ servicoId: sid, qtd, precoUnit, valor: val });
+  });
+  const subtotal = itens.reduce((s,i)=>s+i.valor, 0);
+
+  // Desconto
+  const descontoTipo  = document.getElementById('mv-desconto-tipo')?.value || 'R$';
+  const descontoInput = parseFloat(document.getElementById('mv-desconto-valor')?.value) || 0;
+  const descontoAbs   = descontoTipo === '%' ? subtotal * descontoInput / 100 : descontoInput;
+  const desconto      = descontoInput > 0 ? { tipo: descontoTipo, valor: descontoInput, absoluto: descontoAbs } : null;
+
+  // Tarifa de cartão
+  const tarifaTipo  = document.getElementById('mv-tarifa-tipo')?.value || 'R$';
+  const tarifaInput = parseFloat(document.getElementById('mv-tarifa-valor')?.value) || 0;
+  const tarifaAbs   = tarifaTipo === '%' ? subtotal * tarifaInput / 100 : tarifaInput;
+  const tarifaCartao = tarifaInput > 0 ? { tipo: tarifaTipo, valor: tarifaInput, absoluto: tarifaAbs } : null;
+
+  const valor = Math.max(0, subtotal - descontoAbs - tarifaAbs);
+
+  if (!data || !cliente || itens.length === 0 || !atendenteId || !subtotal) {
+    showToast('Preencha todos os campos obrigatórios e ao menos 1 serviço', 'error'); return;
   }
-  // profissionalId mantido por compatibilidade com registros antigos
-  const obj = { id: id||uid(), data, cliente, cpf, telefone, servicoId, profissionalId: atendenteId, atendenteId, closerId, sdrId, valor, formaPagamento, status, observacao };
+  // servicoId e profissionalId mantidos para compatibilidade com registros antigos
+  const obj = { id: id||uid(), data, cliente, cpf, telefone, itens, servicoId: itens[0].servicoId, profissionalId: atendenteId, atendenteId, closerId, sdrId, subtotal, desconto, tarifaCartao, valor, formaPagamento, status, observacao };
   if (id) {
     const idx = state.vendas.findIndex(v=>v.id===id);
     if (idx >= 0) state.vendas[idx] = obj;
@@ -934,6 +1124,128 @@ function saveVenda(id) {
   }
   saveState(); closeModal(); filterVendas();
   showToast(id ? 'Venda atualizada!' : 'Venda registrada!', 'success');
+}
+
+function showEspelhoVenda(id) {
+  const v = state.vendas.find(x=>x.id===id);
+  if (!v) return;
+  const atendente = getProfissional(v.atendenteId || v.profissionalId);
+  const closer    = v.closerId ? getProfissional(v.closerId) : null;
+  const sdr       = v.sdrId   ? getProfissional(v.sdrId)    : null;
+
+  const itens = v.itens?.length ? v.itens : [{ servicoId: v.servicoId, valor: v.valor, qtd: 1 }];
+  const itensHTML = itens.map((it,i) => {
+    const s = getServico(it.servicoId);
+    const qtd = it.qtd || 1;
+    const qtdLabel = qtd > 1 ? `<span class="text-xs text-gray-400 ml-1">× ${qtd}</span>` : '';
+    return `<div class="flex items-center justify-between py-2 ${i<itens.length-1?'border-b border-gray-100':''}">
+      <span class="text-sm text-gray-700">${s.nome}${qtdLabel}</span>
+      <div class="text-right">
+        ${qtd > 1 ? `<span class="text-xs text-gray-400 block">${R$(it.precoUnit||it.valor/qtd)} × ${qtd}</span>` : ''}
+        <span class="text-sm font-bold text-gray-800">${R$(it.valor)}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  const comissaoRow = (prof, role, color) => {
+    if (!prof || prof.nome === '—') return '';
+    const com = v.valor * (prof.comissaoPct / 100);
+    return `<div class="flex items-center justify-between py-1.5">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full flex-shrink-0" style="background:${color}"></span>
+        <span class="text-sm text-gray-700">${prof.nome}</span>
+        <span class="text-xs text-gray-400">${role} · ${prof.comissaoPct}%</span>
+      </div>
+      <span class="text-sm font-bold" style="color:${color}">${R$(com)}</span>
+    </div>`;
+  };
+
+  const totalComissoes = [atendente, closer, sdr].reduce((sum, prof) => {
+    if (!prof || prof.nome === '—') return sum;
+    return sum + v.valor * (prof.comissaoPct / 100);
+  }, 0);
+
+  const statusColors = { CONCLUIDO:'#15803d', PENDENTE:'#d97706', CANCELADO:'#dc2626' };
+  const statusLabels = { CONCLUIDO:'Concluído', PENDENTE:'Pendente', CANCELADO:'Cancelado' };
+
+  showModal(`
+    <div style="background:linear-gradient(135deg,#1e1b4b,#4c1d95);padding:20px 24px 16px">
+      <div class="flex items-start justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-widest mb-1" style="color:rgba(255,255,255,0.5)">Espelho da Venda</p>
+          <p class="font-bold text-white text-lg">${v.cliente}</p>
+          ${v.cpf ? `<p class="text-xs mt-0.5" style="color:rgba(255,255,255,0.5)">CPF: ${v.cpf}</p>` : ''}
+          ${v.telefone ? `<p class="text-xs" style="color:rgba(255,255,255,0.5)">📱 ${v.telefone}</p>` : ''}
+        </div>
+        <div class="text-right">
+          <p class="text-2xl font-bold text-white">${R$(v.valor)}</p>
+          <p class="text-xs mt-1" style="color:rgba(255,255,255,0.5)">${fmtDate(v.data)}</p>
+          <span class="text-xs font-bold px-2 py-0.5 rounded-full mt-1 inline-block" style="background:${statusColors[v.status]}22;color:${statusColors[v.status]};border:1px solid ${statusColors[v.status]}44">${statusLabels[v.status]}</span>
+        </div>
+      </div>
+    </div>
+    <div class="p-6 space-y-5">
+
+      <!-- Serviços -->
+      <div>
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Serviços realizados</p>
+        <div class="p-3 rounded-xl" style="background:#f8fafc;border:1px solid #e5e7eb">
+          ${itensHTML}
+          ${(itens.length > 1 || v.desconto || v.tarifaCartao) ? `<div class="flex items-center justify-between pt-2 mt-1 border-t border-gray-200">
+            <span class="text-sm font-bold text-gray-600">Subtotal</span>
+            <span class="text-sm font-bold text-gray-800">${R$(v.subtotal || v.valor)}</span>
+          </div>` : ''}
+          ${v.desconto ? `<div class="flex items-center justify-between">
+            <span class="text-sm text-red-500">Desconto (${v.desconto.tipo === '%' ? v.desconto.valor + '%' : R$(v.desconto.valor)})</span>
+            <span class="text-sm font-bold text-red-500">- ${R$(v.desconto.absoluto)}</span>
+          </div>` : ''}
+          ${v.tarifaCartao ? `<div class="flex items-center justify-between">
+            <span class="text-sm text-orange-500">Tarifa de cartão (${v.tarifaCartao.tipo === '%' ? v.tarifaCartao.valor + '%' : R$(v.tarifaCartao.valor)})</span>
+            <span class="text-sm font-bold text-orange-500">- ${R$(v.tarifaCartao.absoluto)}</span>
+          </div>` : ''}
+          ${(v.desconto || v.tarifaCartao) ? `<div class="flex items-center justify-between pt-1 border-t border-gray-200">
+            <span class="text-sm font-bold text-gray-700">Total a cobrar</span>
+            <span class="text-sm font-bold text-emerald-700">${R$(v.valor)}</span>
+          </div>` : ''}
+        </div>
+      </div>
+
+      <!-- Pagamento -->
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Forma de pagamento</p>
+          <span class="badge badge-blue">${v.formaPagamento}</span>
+        </div>
+        ${v.observacao ? `<div class="text-right max-w-xs">
+          <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Observação</p>
+          <p class="text-sm text-gray-600 italic">${v.observacao}</p>
+        </div>` : ''}
+      </div>
+
+      <!-- Equipe e Comissões -->
+      <div>
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Equipe & Comissões</p>
+        <div class="p-3 rounded-xl" style="background:#f8fafc;border:1px solid #e5e7eb">
+          ${comissaoRow(atendente, 'Atendente', '#8b5cf6')}
+          ${comissaoRow(closer, 'Closer', '#ec4899')}
+          ${comissaoRow(sdr, 'SDR', '#3b82f6')}
+          <div class="flex items-center justify-between pt-2 mt-1 border-t border-gray-200">
+            <span class="text-sm font-bold text-gray-600">Total comissões</span>
+            <span class="text-sm font-bold text-red-500">${R$(totalComissoes)}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-gray-600">Líquido (após comissões)</span>
+            <span class="text-sm font-bold text-emerald-600">${R$(v.valor - totalComissoes)}</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Fechar</button>
+      <button class="btn-primary" onclick="closeModal();showVendaModal('${id}')">Editar Venda</button>
+    </div>
+  `);
 }
 
 function deleteVenda(id) {
@@ -1046,7 +1358,12 @@ function renderReceitas() {
     <button class="btn-primary" onclick="showReceitaModal(null)">+ Nova Receita Extra</button>
   </div>
   <div class="filter-bar">
-    <input type="month" id="fr-mes" class="filter-input" value="${ano}-${String(mes).padStart(2,'0')}" onchange="filterReceitas()">
+    <select id="fr-mes" class="filter-input font-medium" onchange="filterReceitas()">
+      ${MESES.map((m,i)=>`<option value="${i+1}"${i+1===mes?' selected':''}>${m}</option>`).join('')}
+    </select>
+    <select id="fr-ano" class="filter-input font-medium" onchange="filterReceitas()">
+      ${[2024,2025,2026,2027].map(y=>`<option value="${y}"${y===ano?' selected':''}>${y}</option>`).join('')}
+    </select>
     <select id="fr-tipo" class="filter-input" onchange="filterReceitas()">
       <option value="">Todos os Tipos</option>
       <option value="Venda">Atendimento</option>
@@ -1068,9 +1385,9 @@ function renderReceitas() {
 }
 
 function filterReceitas() {
-  const mesVal = document.getElementById('fr-mes')?.value;
+  const mes = parseInt(document.getElementById('fr-mes')?.value || state.selectedMonth);
+  const ano = parseInt(document.getElementById('fr-ano')?.value || state.selectedYear);
   const tipo = document.getElementById('fr-tipo')?.value;
-  let [ano,mes] = mesVal ? mesVal.split('-').map(Number) : [state.selectedYear, state.selectedMonth];
 
   // Build combined list: vendas + extras
   const vendasRec = state.vendas
@@ -1212,7 +1529,7 @@ function buildFluxoContent(mes,ano) {
     ...state.despesasVariaveis.filter(d=>isMesAno(d.data,mes,ano)).map(d=>({data:d.data,desc:d.descricao,tipo:'saida',valor:d.valor})),
   ];
   // Fixed expenses projected
-  const fixas = state.despesasFixas.filter(d=>d.status==='ATIVA');
+  const fixas = state.despesasFixas.filter(d=>_despesaAtivaNoMes(d,mes,ano));
   fixas.forEach(f=>{
     const day = String(f.vencimento).padStart(2,'0');
     const m = String(mes).padStart(2,'0');
@@ -1282,7 +1599,7 @@ function initFluxoChart(mes,ano) {
   ];
   const saidas = [
     ...state.despesasVariaveis.filter(d=>isMesAno(d.data,mes,ano)).map(d=>({data:d.data,valor:d.valor,tipo:'s'})),
-    ...state.despesasFixas.filter(d=>d.status==='ATIVA').map(f=>{
+    ...state.despesasFixas.filter(d=>_despesaAtivaNoMes(d,mes,ano)).map(f=>{
       const day=String(f.vencimento).padStart(2,'0');
       return {data:`${ano}-${String(mes).padStart(2,'0')}-${day}`,valor:f.valor,tipo:'s'};
     }),
@@ -1321,10 +1638,16 @@ function _pgtoFixaKey(mes, ano) {
 function _isFixaPaga(d, mes, ano) {
   return !!(d.pagamentos && d.pagamentos[_pgtoFixaKey(mes, ano)]);
 }
+function _despesaAtivaNoMes(d, mes, ano) {
+  if (d.status !== 'ATIVA') return false;
+  if (_pgtoFixaKey(mes, ano) < '2026-01') return false; // nunca mostrar antes de jan/2026
+  if (!d.dataInicio) return true; // registros antigos sem dataInicio: sempre visíveis
+  return d.dataInicio <= _pgtoFixaKey(mes, ano);
+}
 
 function renderDespesasFixas() {
   const mes = state.selectedMonth, ano = state.selectedYear;
-  const ativas = state.despesasFixas.filter(d=>d.status==='ATIVA');
+  const ativas = state.despesasFixas.filter(d=>_despesaAtivaNoMes(d,mes,ano));
   const total = somaArray(ativas, d=>d.valor);
   const pagas = ativas.filter(d=>_isFixaPaga(d,mes,ano));
   const totalPago = somaArray(pagas, d=>d.valor);
@@ -1342,7 +1665,12 @@ function renderDespesasFixas() {
     <div class="item"><div class="label" style="color:#dc2626">○ Pendentes</div><div class="value" style="color:#dc2626">${R$(totalPendente)}</div></div>
   </div>
   <div class="filter-bar">
-    <input type="month" id="fdf-mes" class="filter-input" value="${ano}-${String(mes).padStart(2,'0')}" onchange="filterDespFixas()">
+    <select id="fdf-mes" class="filter-input font-medium" onchange="filterDespFixas()">
+      ${MESES.map((m,i)=>`<option value="${i+1}"${i+1===mes?' selected':''}>${m}</option>`).join('')}
+    </select>
+    <select id="fdf-ano" class="filter-input font-medium" onchange="filterDespFixas()">
+      ${[2024,2025,2026,2027].map(y=>`<option value="${y}"${y===ano?' selected':''}>${y}</option>`).join('')}
+    </select>
     <select id="fdf-cat" class="filter-input" onchange="filterDespFixas()">
       <option value="">Todas as Categorias</option>
       ${CATEGORIAS_DESPESA.map(c=>`<option value="${c}">${c}</option>`).join('')}
@@ -1357,6 +1685,8 @@ function renderDespesasFixas() {
       <option value="ATIVA">Somente Ativas</option>
       <option value="INATIVA">Somente Inativas</option>
     </select>
+    <input type="text" id="fdf-busca" class="filter-input" placeholder="Buscar por nome..." style="flex:1;min-width:150px"
+      oninput="filterDespFixas()" onkeydown="if(event.key==='Enter')filterDespFixas()">
   </div>
   <div class="chart-card overflow-hidden p-0">
     <div class="overflow-x-auto">
@@ -1370,21 +1700,25 @@ function renderDespesasFixas() {
 }
 
 function filterDespFixas() {
-  const mesVal = document.getElementById('fdf-mes')?.value;
+  const mes    = parseInt(document.getElementById('fdf-mes')?.value || state.selectedMonth);
+  const ano    = parseInt(document.getElementById('fdf-ano')?.value || state.selectedYear);
   const cat    = document.getElementById('fdf-cat')?.value;
   const pgto   = document.getElementById('fdf-pgto')?.value;
   const status = document.getElementById('fdf-status')?.value;
 
-  let [ano, mes] = mesVal ? mesVal.split('-').map(Number) : [state.selectedYear, state.selectedMonth];
   state.selectedMonth = mes; state.selectedYear = ano;
 
-  let desp = [...state.despesasFixas].sort((a,b)=>a.vencimento-b.vencimento);
+  const busca = (document.getElementById('fdf-busca')?.value || '').toLowerCase().trim();
+  let desp = [...state.despesasFixas]
+    .filter(d => !d.dataInicio || d.dataInicio <= _pgtoFixaKey(mes, ano))
+    .sort((a,b)=>a.vencimento-b.vencimento);
   if (cat)    desp = desp.filter(d=>d.categoria===cat);
   if (status) desp = desp.filter(d=>d.status===status);
   if (pgto === 'pago')     desp = desp.filter(d=> _isFixaPaga(d,mes,ano));
   if (pgto === 'pendente') desp = desp.filter(d=>!_isFixaPaga(d,mes,ano));
+  if (busca)  desp = desp.filter(d=>(d.nome||'').toLowerCase().includes(busca) || (d.observacao||'').toLowerCase().includes(busca));
 
-  const ativas = state.despesasFixas.filter(d=>d.status==='ATIVA');
+  const ativas = state.despesasFixas.filter(d=>_despesaAtivaNoMes(d,mes,ano));
   const total = somaArray(ativas, d=>d.valor);
   const pagas = ativas.filter(d=>_isFixaPaga(d,mes,ano));
   const totalPago = somaArray(pagas, d=>d.valor);
@@ -1553,8 +1887,10 @@ function saveDespesaFixa(id) {
   const observacao = (document.getElementById('mdf-obs')?.value||'').trim();
   if (!nome||!valor) { showToast('Preencha os campos obrigatórios','error'); return; }
   if (parcelado && (!totalParcelas || !parcelaAtual)) { showToast('Informe a parcela atual e o total de parcelas','error'); return; }
-  const pagamentos = (id && state.despesasFixas.find(d=>d.id===id)?.pagamentos) || {};
-  const obj = {id:id||uid(),nome,categoria,valor,vencimento,status,parcelado,totalParcelas,parcelaAtual,observacao,pagamentos};
+  const existing = id ? state.despesasFixas.find(d=>d.id===id) : null;
+  const pagamentos = existing?.pagamentos || {};
+  const dataInicio = existing?.dataInicio || _pgtoFixaKey(state.selectedMonth, state.selectedYear);
+  const obj = {id:id||uid(),nome,categoria,valor,vencimento,status,parcelado,totalParcelas,parcelaAtual,observacao,pagamentos,dataInicio};
   if(id){const idx=state.despesasFixas.findIndex(d=>d.id===id);if(idx>=0)state.despesasFixas[idx]=obj;}
   else state.despesasFixas.push(obj);
   saveState(); closeModal(); renderDespesasFixas(); showToast('Despesa salva!','success');
@@ -1579,7 +1915,12 @@ function renderDespesasVariaveis() {
     <button class="btn-primary" onclick="showDespesaVarModal(null)">+ Nova Despesa</button>
   </div>
   <div class="filter-bar">
-    <input type="month" id="fdv-mes" class="filter-input" value="${ano}-${String(mes).padStart(2,'0')}" onchange="filterDespVar()">
+    <select id="fdv-mes" class="filter-input font-medium" onchange="filterDespVar()">
+      ${MESES.map((m,i)=>`<option value="${i+1}"${i+1===mes?' selected':''}>${m}</option>`).join('')}
+    </select>
+    <select id="fdv-ano" class="filter-input font-medium" onchange="filterDespVar()">
+      ${[2024,2025,2026,2027].map(y=>`<option value="${y}"${y===ano?' selected':''}>${y}</option>`).join('')}
+    </select>
     <select id="fdv-cat" class="filter-input" onchange="filterDespVar()">
       <option value="">Todas as Categorias</option>
       ${CATEGORIAS_DESPESA.map(c=>`<option value="${c}">${c}</option>`).join('')}
@@ -1593,6 +1934,8 @@ function renderDespesasVariaveis() {
       <option value="pendente">○ Pendentes</option>
       <option value="pago">✓ Pagas</option>
     </select>
+    <input type="text" id="fdv-busca" class="filter-input" placeholder="Buscar por descrição..." style="flex:1;min-width:150px"
+      oninput="filterDespVar()" onkeydown="if(event.key==='Enter')filterDespVar()">
   </div>
   <div id="dv-summary" class="summary-bar"></div>
   <div class="chart-card overflow-hidden p-0">
@@ -1607,16 +1950,18 @@ function renderDespesasVariaveis() {
 }
 
 function filterDespVar() {
-  const mesVal = document.getElementById('fdv-mes')?.value;
-  const cat    = document.getElementById('fdv-cat')?.value;
-  const pgto   = document.getElementById('fdv-pgto')?.value;
-  const comp   = document.getElementById('fdv-comp')?.value;
-  let [ano,mes] = mesVal ? mesVal.split('-').map(Number) : [state.selectedYear, state.selectedMonth];
+  const mes  = parseInt(document.getElementById('fdv-mes')?.value || state.selectedMonth);
+  const ano  = parseInt(document.getElementById('fdv-ano')?.value || state.selectedYear);
+  const cat  = document.getElementById('fdv-cat')?.value;
+  const pgto = document.getElementById('fdv-pgto')?.value;
+  const comp = document.getElementById('fdv-comp')?.value;
+  const busca = (document.getElementById('fdv-busca')?.value || '').toLowerCase().trim();
   let desp = [...state.despesasVariaveis].filter(d=>isMesAno(d.data,mes,ano)).sort((a,b)=>b.data.localeCompare(a.data));
   if (cat)  desp = desp.filter(d=>d.categoria===cat);
   if (pgto) desp = desp.filter(d=>d.formaPagamento===pgto);
   if (comp === 'pago')     desp = desp.filter(d=> d.pago);
   if (comp === 'pendente') desp = desp.filter(d=>!d.pago);
+  if (busca) desp = desp.filter(d=>(d.descricao||'').toLowerCase().includes(busca) || (d.observacao||'').toLowerCase().includes(busca));
   const total = somaArray(desp,d=>d.valor);
   const totalPago = somaArray(desp.filter(d=>d.pago), d=>d.valor);
   const totalPendente = total - totalPago;
@@ -1632,7 +1977,10 @@ function filterDespVar() {
   if(!desp.length){tb.innerHTML=`<tr><td colspan="7" class="text-center py-12 text-gray-400">Nenhuma despesa no período</td></tr>`;return;}
   tb.innerHTML = desp.map(d=>`<tr>
     <td>${fmtDate(d.data)}</td>
-    <td class="font-medium ${d.pago?'text-gray-400':''}">${d.descricao}</td>
+    <td class="font-medium ${d.pago?'text-gray-400':''}">
+      <div>${d.descricao}</div>
+      ${d.observacao ? `<div class="text-xs text-gray-400 mt-0.5 italic">${d.observacao}</div>` : ''}
+    </td>
     <td><span class="badge badge-gray">${d.categoria}</span></td>
     <td class="font-bold ${d.pago?'text-gray-400 line-through':'text-red-600'}">${R$(d.valor)}</td>
     <td><span class="badge badge-blue">${d.formaPagamento}</span></td>
@@ -1679,6 +2027,9 @@ function showDespesaVarModal(id) {
           </select>
         </div>
       </div>
+      <div class="form-group"><label class="form-label">Observações</label>
+        <input type="text" id="mdv-obs" class="form-control" placeholder="Observações adicionais (opcional)" value="${d?.observacao||''}">
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -1692,10 +2043,11 @@ function saveDespVar(id) {
   const descricao=document.getElementById('mdv-desc').value.trim();
   const valor=parseFloat(document.getElementById('mdv-valor').value);
   const formaPagamento=document.getElementById('mdv-pgto').value;
+  const observacao=(document.getElementById('mdv-obs')?.value||'').trim();
   if(!data||!descricao||!valor){showToast('Preencha os campos obrigatórios','error');return;}
   const pago = (id && state.despesasVariaveis.find(d=>d.id===id)?.pago) || false;
-  if(id){const idx=state.despesasVariaveis.findIndex(d=>d.id===id);if(idx>=0)state.despesasVariaveis[idx]={id,data,categoria,descricao,valor,formaPagamento,pago};}
-  else state.despesasVariaveis.push({id:uid(),data,categoria,descricao,valor,formaPagamento,pago:false});
+  if(id){const idx=state.despesasVariaveis.findIndex(d=>d.id===id);if(idx>=0)state.despesasVariaveis[idx]={id,data,categoria,descricao,valor,formaPagamento,pago,observacao};}
+  else state.despesasVariaveis.push({id:uid(),data,categoria,descricao,valor,formaPagamento,pago:false,observacao});
   saveState();closeModal();filterDespVar();showToast('Despesa salva!','success');
 }
 
@@ -1842,7 +2194,7 @@ function renderServicos() {
 
 function filterServicos() {
   const cat = document.getElementById('fs-cat')?.value;
-  let servs = [...state.servicos];
+  let servs = [...state.servicos].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
   if(cat) servs=servs.filter(s=>s.categoria===cat);
   const mes=state.selectedMonth,ano=state.selectedYear;
   const tb=document.getElementById('serv-tbody');
