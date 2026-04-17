@@ -171,6 +171,8 @@ function saveState() {
       receitasExtras: state.receitasExtras,
     }));
   } catch(e) { console.warn('Erro ao salvar:', e); }
+  // Sincroniza com Supabase em background
+  if (typeof dbSync === 'function') dbSync(state).catch(() => {});
 }
 
 function loadState() {
@@ -2295,8 +2297,28 @@ function showToast(msg, type='success') {
 // ============================================================
 // INICIALIZAÇÃO (chamada pelo auth.js após login bem-sucedido)
 // ============================================================
-function initApp() {
-  loadState();
+async function initApp() {
+  // Tenta carregar do Supabase; se vazio/erro usa localStorage
+  if (typeof dbLoad === 'function') {
+    try {
+      const remote = await dbLoad();
+      if (remote) {
+        state.profissionais    = remote.profissionais;
+        state.servicos         = remote.servicos;
+        state.vendas           = remote.vendas;
+        state.despesasFixas    = remote.despesasFixas;
+        state.despesasVariaveis = remote.despesasVariaveis;
+        state.receitasExtras   = remote.receitasExtras;
+        saveState(); // atualiza localStorage com dados remotos
+      } else {
+        loadState(); // fallback localStorage → migra para Supabase via saveState
+      }
+    } catch(e) {
+      loadState();
+    }
+  } else {
+    loadState();
+  }
 
   // @ts-ignore — getSession e updateHeaderUser definidos em auth.js
   const session = getSession();
